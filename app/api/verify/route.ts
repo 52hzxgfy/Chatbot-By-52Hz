@@ -12,16 +12,7 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // 先检查是否已经验证过
-    const isAlreadyVerified = await VerificationService.checkVerificationStatus(code);
-    if (isAlreadyVerified) {
-      return NextResponse.json({
-        success: true,
-        message: '验证成功',
-        code
-      });
-    }
-
+    // 直接进行验证，不检查重复使用
     const result = await VerificationService.verifyCode(code);
     
     if (!result.success) {
@@ -31,7 +22,13 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      success: true,
+      message: '验证成功',
+      code: result.code,
+      remainingUses: 0
+    });
+
   } catch (error) {
     console.error('Verification error:', error);
     return NextResponse.json({ 
