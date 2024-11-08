@@ -30,8 +30,12 @@ export class VerificationService {
   // 验证码验证
   static async verifyCode(code: string): Promise<VerificationResponse> {
     try {
+      console.log('开始验证码验证:', code);
       const codes = await this.getAllCodes();
+      console.log('获取到的验证码列表:', codes);
+      
       const codeData = codes.find(c => c.code === code);
+      console.log('找到的验证码数据:', codeData);
       
       if (!codeData) {
         return { 
@@ -53,8 +57,16 @@ export class VerificationService {
       codeData.usageCount += 1;
       codeData.isValid = false;
       
+      console.log('更新前的验证码状态:', codes);
+      
       // 更新 Edge Config
-      await this.updateEdgeConfig(codes);
+      try {
+        await this.updateEdgeConfig(codes);
+        console.log('Edge Config 更新成功');
+      } catch (error) {
+        console.error('Edge Config 更新失败:', error);
+        throw error;
+      }
 
       return { 
         success: true, 
