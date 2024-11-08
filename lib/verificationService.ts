@@ -1,27 +1,15 @@
+import { createClient } from '@vercel/edge-config';
 import { VerificationCode, VerificationResponse, VerificationStatus } from './types';
 
 export class VerificationService {
+  private static readonly edgeConfig = createClient(process.env.EDGE_CONFIG!);
   private static readonly edgeConfigId = process.env.EDGE_CONFIG?.match(/ecfg_[^?]+/)?.[0];
 
-  // 获取所有验证码
+  // 获取所有验证码 - 使用 edge-config 客户端读取
   static async getAllCodes(): Promise<VerificationCode[]> {
     try {
-      if (!this.edgeConfigId) {
-        throw new Error('无效的 Edge Config URL');
-      }
-
-      const response = await fetch(`https://api.vercel.com/v1/edge-config/${this.edgeConfigId}/items/verification-codes`, {
-        headers: {
-          'Authorization': `Bearer ${process.env.VERCEL_API_TOKEN}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('获取验证码失败');
-      }
-
-      const data = await response.json();
-      return data.value || [];
+      const codes = await this.edgeConfig.get<VerificationCode[]>('verification-codes');
+      return codes || [];
     } catch (error) {
       console.error('获取验证码失败:', error);
       throw error;
@@ -58,11 +46,14 @@ export class VerificationService {
         };
       }
 
-      // 更新验证码状态
-      codeData.usageCount += 1;
-      codeData.isValid = false;
-      
-      // 直接更新单个验证码
+      // 创建新的验证码列表，而不是修改原有对象
+      const updatedCodes = codes.map(c => 
+        c.code === code 
+          ? { ...c, usageCount: c.usageCount + 1, isValid: false }
+          : c
+      );
+
+      // 使用 Vercel API 更新
       if (!this.edgeConfigId) {
         throw new Error('无效的 Edge Config URL');
       }
@@ -78,15 +69,20 @@ export class VerificationService {
             {
               operation: 'upsert',
               key: 'verification-codes',
-              value: codes
+              value: updatedCodes
             }
           ]
         })
       });
 
       if (!response.ok) {
+        const errorData = await response.json();
+        console.error('更新验证码状态失败:', errorData);
         throw new Error('更新验证码状态失败');
       }
+
+      // 等待一小段时间确保更新生效
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       return { 
         success: true, 
