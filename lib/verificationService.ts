@@ -32,10 +32,14 @@ export class VerificationService {
     try {
       console.log('开始验证码验证:', code);
       const codes = await this.getAllCodes();
-      console.log('获取到的验证码列表:', codes);
+      console.log('获取到的验证码列表长度:', codes.length);
       
       const codeData = codes.find(c => c.code === code);
-      console.log('找到的验证码数据:', codeData);
+      console.log('验证码查找结果:', codeData ? {
+        code: codeData.code,
+        isValid: codeData.isValid,
+        usageCount: codeData.usageCount
+      } : '未找到验证码');
       
       if (!codeData) {
         return { 
@@ -57,12 +61,14 @@ export class VerificationService {
       codeData.usageCount += 1;
       codeData.isValid = false;
       
-      console.log('更新前的验证码状态:', codes);
-      
       // 更新 Edge Config
       try {
         await this.updateEdgeConfig(codes);
-        console.log('Edge Config 更新成功');
+        console.log('Edge Config 更新成功, 验证码状态:', {
+          code: codeData.code,
+          isValid: codeData.isValid,
+          usageCount: codeData.usageCount
+        });
       } catch (error) {
         console.error('Edge Config 更新失败:', error);
         throw error;
@@ -111,3 +117,4 @@ export class VerificationService {
     }
   }
 }
+
