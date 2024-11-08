@@ -1,29 +1,30 @@
 import { VerificationCode, VerificationResponse, VerificationStatus } from './types';
-import { createClient } from '@vercel/edge-config';
 
 export class VerificationService {
-  private static readonly edgeConfig = createClient(process.env.EDGE_CONFIG!);
+  private static readonly edgeConfigId = process.env.EDGE_CONFIG?.match(/ecfg_[^?]+/)?.[0];
 
   // 获取所有验证码
   static async getAllCodes(): Promise<VerificationCode[]> {
     try {
-      const codes = await this.edgeConfig.get<VerificationCode[]>('verification-codes');
-      return codes || [];
+      if (!this.edgeConfigId) {
+        throw new Error('无效的 Edge Config URL');
+      }
+
+      const response = await fetch(`https://api.vercel.com/v1/edge-config/${this.edgeConfigId}/items/verification-codes`, {
+        headers: {
+          'Authorization': `Bearer ${process.env.VERCEL_API_TOKEN}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('获取验证码失败');
+      }
+
+      const data = await response.json();
+      return data.value || [];
     } catch (error) {
       console.error('获取验证码失败:', error);
       throw error;
-    }
-  }
-
-  // 检查验证码状态
-  static async checkVerificationStatus(code: string): Promise<boolean> {
-    try {
-      const codes = await this.getAllCodes();
-      const codeData = codes.find(c => c.code === code);
-      return codeData ? codeData.isValid : false;
-    } catch (error) {
-      console.error('检查验证状态失败:', error);
-      return false;
     }
   }
 
@@ -61,17 +62,30 @@ export class VerificationService {
       codeData.usageCount += 1;
       codeData.isValid = false;
       
-      // 更新 Edge Config
-      try {
-        await this.updateEdgeConfig(codes);
-        console.log('Edge Config 更新成功, 验证码状态:', {
-          code: codeData.code,
-          isValid: codeData.isValid,
-          usageCount: codeData.usageCount
-        });
-      } catch (error) {
-        console.error('Edge Config 更新失败:', error);
-        throw error;
+      // 直接更新单个验证码
+      if (!this.edgeConfigId) {
+        throw new Error('无效的 Edge Config URL');
+      }
+
+      const response = await fetch(`https://api.vercel.com/v1/edge-config/${this.edgeConfigId}/items`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${process.env.VERCEL_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          items: [
+            {
+              operation: 'upsert',
+              key: 'verification-codes',
+              value: codes
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('更新验证码状态失败');
       }
 
       return { 
@@ -85,36 +99,6 @@ export class VerificationService {
       throw error;
     }
   }
-
-  // 更新 Edge Config
-  private static async updateEdgeConfig(codes: VerificationCode[]) {
-    const edgeConfigId = process.env.EDGE_CONFIG?.match(/ecfg_[^?]+/)?.[0];
-    
-    if (!edgeConfigId) {
-      throw new Error('无效的 Edge Config URL');
-    }
-
-    const response = await fetch(`https://api.vercel.com/v1/edge-config/${edgeConfigId}/items`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${process.env.VERCEL_API_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        items: [
-          {
-            operation: 'upsert',
-            key: 'verification-codes',
-            value: codes
-          }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`更新 Edge Config 失败: ${JSON.stringify(errorData)}`);
-    }
-  }
 }
+
 
